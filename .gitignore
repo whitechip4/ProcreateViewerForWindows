@@ -1,0 +1,11 @@
+bin/
+obj/
+*.old*
+*.bmp
+__pycache__/
+*.pyc
+thumb/*.exe
+thumb/*.dll
+thumb/*.pdb
+installer/output/
+portable/

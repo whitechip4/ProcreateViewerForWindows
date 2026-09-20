@@ -1,0 +1,76 @@
+name: release
+
+# Push a tag like v1.2.3 to build the viewer, the thumbnail handler and the Inno Setup installer,
+# and publish them as a GitHub Release.  The Windows runner ships the .NET Framework C# compiler;
+# Inno Setup is installed with Chocolatey.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          "version=$v" >> $env:GITHUB_OUTPUT
+          $c = Get-Content src/AssemblyInfo.cs -Raw
+          $c = $c.Replace('"0.0.0.0"', '"' + $v + '.0"').Replace('"0.0.0"', '"' + $v + '"')
+          Set-Content src/AssemblyInfo.cs $c
+
+      - name: Build viewer
+        shell: cmd
+        run: build.cmd
+
+      - name: Build thumbnail handler
+        shell: cmd
+        run: thumb\compile.cmd
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $global:LASTEXITCODE = 0 }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found after install" }
+          Write-Host "using $iscc"
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.ver.outputs.version }}" installer\ProcreateViewer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          Get-ChildItem installer\output
+
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory portable | Out-Null
+          Copy-Item bin/ProcreateViewer.exe, thumb/ProcreateThumb.dll, thumb/register.cmd, README.md, LICENSE portable/
+          Compress-Archive -Path portable/* -DestinationPath "ProcreateViewer-${{ steps.ver.outputs.version }}-portable.zip"
+
+      - name: Keep build output for debugging
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            bin/ProcreateViewer.exe
+            thumb/ProcreateThumb.dll
+            installer/output/
+          if-no-files-found: ignore
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/output/ProcreateViewer-Setup-${{ steps.ver.outputs.version }}.exe
+            ProcreateViewer-${{ steps.ver.outputs.version }}-portable.zip
+          generate_release_notes: true

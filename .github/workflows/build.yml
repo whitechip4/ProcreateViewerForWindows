@@ -1,0 +1,29 @@
+name: build
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build viewer
+        shell: cmd
+        run: build.cmd
+      - name: Build thumbnail handler
+        shell: cmd
+        run: thumb\compile.cmd
+      - name: Smoke test (CLI help)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath bin\ProcreateViewer.exe -ArgumentList "--help" -PassThru -Wait
+          if ($p.ExitCode -ne 2) { throw "unexpected exit code $($p.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ProcreateViewer-${{ github.sha }}
+          path: |
+            bin/ProcreateViewer.exe
+            thumb/ProcreateThumb.dll
