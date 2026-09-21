@@ -5,6 +5,7 @@ PNG / レイヤー付き PSD の書き出しができ、エクスプローラに
 
 A viewer for Procreate (`.procreate`) files on Windows: layers and groups, full-resolution view,
 PNG and layered PSD export, Explorer thumbnails.
+<img width="1266" height="833" alt="image" src="https://github.com/user-attachments/assets/536be1b3-8365-4ae1-89f8-78ad203d0862" />
 
 ## ダウンロード / Download
 
