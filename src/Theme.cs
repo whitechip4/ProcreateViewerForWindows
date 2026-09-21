@@ -106,7 +106,8 @@ namespace ProcreateViewer
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             var btn = e.Item as ToolStripButton;
-            e.TextColor = !e.Item.Enabled ? Theme.TextDim : (btn != null && btn.Checked ? Theme.Accent : (e.Item is ToolStripStatusLabel ? Theme.TextDim : Theme.Text));
+            var lbl = e.Item as ToolStripStatusLabel;
+            e.TextColor = !e.Item.Enabled ? Theme.TextDim : (btn != null && btn.Checked ? Theme.Accent : (lbl != null ? (lbl.IsLink ? Theme.Accent : Theme.TextDim) : Theme.Text));
             base.OnRenderItemText(e);
         }
 

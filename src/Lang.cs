@@ -28,10 +28,12 @@ namespace ProcreateViewer
         public static bool IsJapanese { get { return Current == "ja"; } }
 
         /// <summary>Switch language for this process and remember it for the next start.</summary>
-        public static void Set(string code)
+        public static void Set(string code) { Set(code, true); }
+
+        public static void Set(string code, bool persist)
         {
             lang = code == "ja" ? "ja" : "en";
-            Prefs.Set("Language", lang);
+            if (persist) Prefs.Set("Language", lang);
         }
 
         /// <summary>Translate an English UI string; returns the input unchanged in English mode or when unknown.</summary>
@@ -97,6 +99,11 @@ namespace ProcreateViewer
             { "Group", "グループ" },
             { "Layer", "レイヤー" },
             { "{0}   [Group {1}%]", "{0}   [グループ {1}%]" },
+
+            // updates
+            { "Version {0} is available. Click to update", "新しいバージョン {0} があります。クリックで更新" },
+            { "Downloading {0}\u2026 {1}", "{0} をダウンロード中… {1}" },
+            { "Update failed: {0}", "更新に失敗しました: {0}" },
 
             // Explorer context menu
             { "Open with Procreate Viewer", "Procreate Viewer で開く" },

@@ -243,6 +243,24 @@ namespace ProcreateViewer
                             }
                             return 0;
                         }
+                    case "--update":
+                        {
+                            Console.WriteLine("running {0}{1}", Updater.LocalText, Updater.IsDevBuild ? " (development build)" : "");
+                            var info = Updater.Latest(true);
+                            Console.WriteLine("latest  {0}  {1}", info.Tag, info.PageUrl);
+                            bool newer = Updater.IsNewer(info.Version);
+                            Console.WriteLine(newer ? "update available" : "up to date");
+                            if (args.Length > 1 && args[1] == "apply")
+                            {
+                                if (!newer && !(args.Length > 2 && args[2] == "force")) { Console.WriteLine("nothing to apply (add 'force' to reinstall)"); return 0; }
+                                Console.WriteLine(Updater.InstalledWithSetup() ? "installer install: downloading Setup" : "portable install: downloading zip");
+                                string last = null;
+                                Updater.Apply(info, null, p => { if (p != last) { last = p; Console.Write("\r  " + p + "    "); } });
+                                Console.WriteLine();
+                                Console.WriteLine("update launched; this process exits now so the files can be replaced");
+                            }
+                            return newer ? 3 : 0;
+                        }
                     case "--register":
                         Register(true);
                         Console.WriteLine("registered .procreate -> " + Application.ExecutablePath);
@@ -257,7 +275,7 @@ namespace ProcreateViewer
                         Console.WriteLine("language = " + L.Current);
                         return 0;
                     default:
-                        Console.WriteLine("ProcreateViewer [file.procreate]\n  --export <file> <outdir>   write composite.png and every layer as PNG (full resolution, group folders)\n  --psd <file> <out.psd>     write a layered Photoshop file (groups, blend modes, opacity, clipping)\n  --tree <file>              print the layer / group hierarchy\n  --bench <file> [out.png]   time the pipeline\n  --register | --unregister  file association for the current user\n  --lang ja|en               UI language (default: follows the Windows display language)");
+                        Console.WriteLine("ProcreateViewer [file.procreate]\n  --export <file> <outdir>   write composite.png and every layer as PNG (full resolution, group folders)\n  --psd <file> <out.psd>     write a layered Photoshop file (groups, blend modes, opacity, clipping)\n  --tree <file>              print the layer / group hierarchy\n  --bench <file> [out.png]   time the pipeline\n  --register | --unregister  file association for the current user\n  --lang ja|en               UI language (default: follows the Windows display language)\n  --update [apply [force]]   check GitHub Releases for a newer version; apply downloads and installs it");
                         return 2;
                 }
             }

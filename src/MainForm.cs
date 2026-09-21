@@ -301,6 +301,8 @@ namespace ProcreateViewer
         private readonly StatusStrip status = new StatusStrip();
         private readonly ToolStripStatusLabel statusLabel = new ToolStripStatusLabel();
         private readonly ToolStripProgressBar progress = new ToolStripProgressBar();
+        private readonly ToolStripStatusLabel updateLabel = new ToolStripStatusLabel();   // "version x is available", right end of the status bar
+        private UpdateInfo pendingUpdate;
         private const int ThumbSize = 64;
 
         private ProcreateDocument doc;
@@ -409,6 +411,12 @@ namespace ProcreateViewer
             progress.Visible = false;
             status.Items.Add(statusLabel);
             status.Items.Add(progress);
+            updateLabel.IsLink = true;
+            updateLabel.LinkColor = updateLabel.ActiveLinkColor = updateLabel.VisitedLinkColor = Theme.Accent;
+            updateLabel.LinkBehavior = LinkBehavior.HoverUnderline;
+            updateLabel.Visible = false;
+            updateLabel.Click += (s, e) => StartUpdate();
+            status.Items.Add(updateLabel);
 
             Controls.Add(split);
             Controls.Add(tool);
@@ -423,6 +431,7 @@ namespace ProcreateViewer
 
             // the handle does not exist yet in the constructor, so defer opening until the window is shown
             if (path != null) Shown += (s, e) => OpenFile(path);
+            Shown += (s, e) => Updater.CheckInBackground(info => UI(() => ShowUpdate(info)));
 
             // lifecycle trace: explains "the window vanished" reports
             Shown += (s, e) => Trace.Log("form shown bounds=" + Bounds + " state=" + WindowState);
@@ -453,6 +462,7 @@ namespace ProcreateViewer
             btnFull.ToolTipText = L.T("Composite at full resolution (off: a lighter preview with the long side at 2048 px)");
             btnLang.Text = L.IsJapanese ? "English" : "日本語";
             btnLang.ToolTipText = L.T("Language");
+            if (pendingUpdate != null) updateLabel.Text = L.F("Version {0} is available. Click to update", pendingUpdate.Tag);
             if (doc == null) statusLabel.Text = L.T("Open a file or drop a .procreate here");
             else
             {
@@ -763,8 +773,38 @@ namespace ProcreateViewer
         }
 
         // ---------------- visibility -----------------
+        // ---------------- updates -----------------
+        private void ShowUpdate(UpdateInfo info)
+        {
+            pendingUpdate = info;
+            updateLabel.Text = L.F("Version {0} is available. Click to update", info.Tag);
+            updateLabel.Enabled = true;
+            updateLabel.Visible = true;
+        }
+
+        private void StartUpdate()
+        {
+            var info = pendingUpdate;
+            if (info == null || !updateLabel.Enabled) return;
+            updateLabel.Enabled = false;
+            string reopen = doc != null ? doc.Path : null;
+            Task.Run(() =>
+            {
+                try
+                {
+                    Updater.Apply(info, reopen, p => UI(() => { statusLabel.Text = L.F("Downloading {0}\u2026 {1}", info.Tag, p); }));
+                    UI(() => { Trace.Log("update handed over, closing"); Close(); });
+                }
+                catch (Exception ex)
+                {
+                    Trace.Log("update failed: " + ex);
+                    UI(() => { statusLabel.Text = L.F("Update failed: {0}", ex.Message); updateLabel.Enabled = true; });
+                }
+            });
+        }
+
         /// <summary>Test hook: what the language button does, followed by a (cached) re-render so --gui-test gets a screenshot.</summary>
-        public void ToggleLanguage() { L.Set(L.IsJapanese ? "en" : "ja"); ApplyLanguage(); RequestRender(); }
+        public void ToggleLanguage() { L.Set(L.IsJapanese ? "en" : "ja", false); ApplyLanguage(); RequestRender(); }   // not persisted: a test must not change the user's setting
 
         /// <summary>Test hook: toggle the first visible layer off (what a click on its checkbox does).</summary>
         public void ToggleFirstLayer()
