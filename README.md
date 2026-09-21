@@ -49,3 +49,11 @@ Requires Windows 10 / 11 (64-bit). No additional runtime is needed.
 - "Save view as PNG", "Export all layers as PNG" and "Export PSD" write files.
 - The button at the right end of the toolbar ("English" / "日本語") switches the UI language. The first start
   follows the Windows display language; `ProcreateViewer.exe --lang en` sets it from the command line.
+
+## ライセンス / License
+
+MIT License。LZO デコーダは [lzokay](https://github.com/jackoalan/lzokay)（MIT）の移植です。
+Procreate は Savage Interactive Pty Ltd の商標です。本ソフトは非公式の独立したビューアで、同社とは関係ありません。
+
+MIT License. The LZO decoder is a port of [lzokay](https://github.com/jackoalan/lzokay) (MIT).
+Procreate is a trademark of Savage Interactive Pty Ltd; this is an independent, unofficial viewer not affiliated with them.

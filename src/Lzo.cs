@@ -4,122 +4,163 @@ using System.IO;
 namespace ProcreateViewer
 {
     /// <summary>
-    /// LZO1X decompressor (the format Procreate uses for layer tiles).  Port of the classic
-    /// lzo1x_decompress_safe state machine; bounds-checked against both buffers.
+    /// LZO1X decompressor (the format Procreate used for layer tiles up to version 5.2).
+    ///
+    /// C# port of the decompressor in lzokay by Jack Andersen (https://github.com/jackoalan/lzokay),
+    /// Copyright (c) 2018 Jack Andersen, MIT License (full text in LICENSE).  Instruction comments follow
+    /// the original.  Every read and write is bounds-checked against both buffers.
     /// </summary>
     public static unsafe class Lzo
     {
         public static int Decompress(byte[] src, byte[] dst)
         {
             if (src.Length < 3) throw new InvalidDataException("LZO input too short");
-            fixed (byte* inBase = src)
-            fixed (byte* outBase = dst)
+            fixed (byte* srcBase = src)
+            fixed (byte* dstBase = dst)
             {
-                byte* ip = inBase, ipEnd = inBase + src.Length;
-                byte* op = outBase, opEnd = outBase + dst.Length;
-                byte* mpos;
-                uint t, next, state = 0;
+                byte* inp = srcBase, inpEnd = srcBase + src.Length;
+                byte* outp = dstBase, outpEnd = dstBase + dst.Length;
+                byte* lbcur;
+                long lblen = 0;
+                uint state = 0, nstate;
 
-                if (*ip > 17)
+                // First byte encoding
+                if (*inp >= 22)
                 {
-                    t = (uint)(*ip++ - 17);
-                    CopyLiterals(ref ip, ref op, t, ipEnd, opEnd);
-                    state = t < 4 ? t : 4;
+                    // 22..255 : copy literal string, length = byte - 17 (4..238), state = 4 (no extra literals)
+                    long len = *inp++ - 17;
+                    NeedsIn(inp, len, inpEnd);
+                    NeedsOut(outp, len, outpEnd);
+                    for (long i = 0; i < len; i++) *outp++ = *inp++;
+                    state = 4;
                 }
-
-                for (;;)
+                else if (*inp >= 18)
                 {
-                    if (ip >= ipEnd) throw new InvalidDataException("LZO input overrun");
-                    t = *ip++;
-                    if (t < 16)
+                    // 18..21 : copy 0..3 literals, state = byte - 17
+                    nstate = (uint)(*inp++ - 17);
+                    state = nstate;
+                    NeedsIn(inp, nstate, inpEnd);
+                    NeedsOut(outp, nstate, outpEnd);
+                    for (uint i = 0; i < nstate; i++) *outp++ = *inp++;
+                }
+                // 0..17 : regular instruction encoding (see below)
+
+                while (true)
+                {
+                    NeedsIn(inp, 1, inpEnd);
+                    byte inst = *inp++;
+                    if ((inst & 0xC0) != 0)
                     {
+                        // [M2]  1 L L D D D S S (128..255): copy 5-8 bytes within 2 kB; 0 1 L D D D S S (64..127): copy 3-4 bytes
+                        //       followed by one byte H: distance = (H << 3) + D + 1, state = S
+                        NeedsIn(inp, 1, inpEnd);
+                        lbcur = outp - ((*inp++ << 3) + ((inst >> 2) & 0x7) + 1);
+                        lblen = (inst >> 5) + 1;
+                        nstate = (uint)(inst & 0x3);
+                    }
+                    else if ((inst & 0x20) != 0)
+                    {
+                        // [M3]  0 0 1 L L L L L (32..63): copy within 16 kB, length = 2 + (L ?: 31 + zero_bytes * 255 + next)
+                        //       followed by LE16: distance = D + 1, state = S
+                        lblen = (inst & 0x1f) + 2;
+                        if (lblen == 2)
+                        {
+                            long zeros = CountZeros(ref inp, inpEnd);
+                            NeedsIn(inp, 1, inpEnd);
+                            lblen += zeros * 255 + 31 + *inp++;
+                        }
+                        NeedsIn(inp, 2, inpEnd);
+                        uint d = (uint)(inp[0] | (inp[1] << 8));
+                        inp += 2;
+                        lbcur = outp - ((d >> 2) + 1);
+                        nstate = d & 0x3;
+                    }
+                    else if ((inst & 0x10) != 0)
+                    {
+                        // [M4]  0 0 0 1 H L L L (16..31): copy within 16..48 kB, length = 2 + (L ?: 7 + zero_bytes * 255 + next)
+                        //       followed by LE16: distance = 16384 + (H << 14) + D, state = S; distance == 16384 ends the stream
+                        lblen = (inst & 0x7) + 2;
+                        if (lblen == 2)
+                        {
+                            long zeros = CountZeros(ref inp, inpEnd);
+                            NeedsIn(inp, 1, inpEnd);
+                            lblen += zeros * 255 + 7 + *inp++;
+                        }
+                        NeedsIn(inp, 2, inpEnd);
+                        uint d = (uint)(inp[0] | (inp[1] << 8));
+                        inp += 2;
+                        lbcur = outp - (((inst & 0x8) << 11) + (d >> 2));
+                        nstate = d & 0x3;
+                        if (lbcur == outp) break;   // stream finished
+                        lbcur -= 16384;
+                    }
+                    else
+                    {
+                        // [M1] depends on the number of literals copied by the previous instruction
                         if (state == 0)
                         {
-                            if (t == 0)
+                            // 0 0 0 0 L L L L (0..15): long literal run, length = 3 + (L ?: 15 + zero_bytes * 255 + next), state = 4
+                            long len = inst + 3;
+                            if (len == 3)
                             {
-                                while (*ip == 0) { t += 255; ip++; if (ip >= ipEnd) throw new InvalidDataException("LZO input overrun"); }
-                                t += (uint)(15 + *ip++);
+                                long zeros = CountZeros(ref inp, inpEnd);
+                                NeedsIn(inp, 1, inpEnd);
+                                len += zeros * 255 + 15 + *inp++;
                             }
-                            t += 3;
-                            CopyLiterals(ref ip, ref op, t, ipEnd, opEnd);
+                            NeedsIn(inp, len, inpEnd);
+                            NeedsOut(outp, len, outpEnd);
+                            for (long i = 0; i < len; i++) *outp++ = *inp++;
                             state = 4;
                             continue;
                         }
                         else if (state != 4)
                         {
-                            next = t & 3;
-                            mpos = op - 1 - (t >> 2) - ((uint)*ip++ << 2);
-                            if (mpos < outBase || op + 2 > opEnd) throw new InvalidDataException("LZO lookbehind overrun");
-                            *op++ = mpos[0];
-                            *op++ = mpos[1];
-                            goto match_next;
+                            // 0 0 0 0 D D S S (0..15) after 1-3 literals: copy 2 bytes, distance = (H << 2) + D + 1
+                            NeedsIn(inp, 1, inpEnd);
+                            nstate = (uint)(inst & 0x3);
+                            lbcur = outp - ((inst >> 2) + (*inp++ << 2) + 1);
+                            lblen = 2;
                         }
                         else
                         {
-                            next = t & 3;
-                            mpos = op - (1 + 0x800) - (t >> 2) - ((uint)*ip++ << 2);
-                            t = 3;
+                            // 0 0 0 0 D D S S (0..15) after 4+ literals: copy 3 bytes, distance = (H << 2) + D + 2049
+                            NeedsIn(inp, 1, inpEnd);
+                            nstate = (uint)(inst & 0x3);
+                            lbcur = outp - ((inst >> 2) + (*inp++ << 2) + 2049);
+                            lblen = 3;
                         }
                     }
-                    else if (t >= 64)
-                    {
-                        next = t & 3;
-                        mpos = op - 1 - ((t >> 2) & 7) - ((uint)*ip++ << 3);
-                        t = (t >> 5) + 1;
-                    }
-                    else if (t >= 32)
-                    {
-                        t = (t & 31) + 2;
-                        if (t == 2)
-                        {
-                            while (*ip == 0) { t += 255; ip++; if (ip >= ipEnd) throw new InvalidDataException("LZO input overrun"); }
-                            t += (uint)(31 + *ip++);
-                        }
-                        mpos = op - 1;
-                        next = (uint)(ip[0] | (ip[1] << 8));
-                        ip += 2;
-                        mpos -= next >> 2;
-                        next &= 3;
-                    }
-                    else
-                    {
-                        mpos = op - ((t & 8) << 11);
-                        t = (t & 7) + 2;
-                        if (t == 2)
-                        {
-                            while (*ip == 0) { t += 255; ip++; if (ip >= ipEnd) throw new InvalidDataException("LZO input overrun"); }
-                            t += (uint)(7 + *ip++);
-                        }
-                        next = (uint)(ip[0] | (ip[1] << 8));
-                        ip += 2;
-                        mpos -= next >> 2;
-                        next &= 3;
-                        if (mpos == op) goto eof_found;
-                        mpos -= 0x4000;
-                    }
-
-                    if (mpos < outBase || op + t > opEnd) throw new InvalidDataException("LZO match overrun");
-                    {
-                        byte* oe = op + t;
-                        do { *op++ = *mpos++; } while (op < oe);
-                    }
-
-                match_next:
-                    state = next;
-                    CopyLiterals(ref ip, ref op, next, ipEnd, opEnd);
+                    if (lbcur < dstBase) throw new InvalidDataException("LZO lookbehind overrun");
+                    NeedsIn(inp, nstate, inpEnd);
+                    NeedsOut(outp, lblen + nstate, outpEnd);
+                    // copy lookbehind (may overlap the output being written, so byte by byte, forwards)
+                    for (long i = 0; i < lblen; i++) *outp++ = *lbcur++;
+                    state = nstate;
+                    // copy literals
+                    for (uint i = 0; i < nstate; i++) *outp++ = *inp++;
                 }
 
-            eof_found:
-                return (int)(op - outBase);
+                if (lblen != 3) throw new InvalidDataException("LZO stream not terminated");
+                return (int)(outp - dstBase);
             }
         }
 
-        private static void CopyLiterals(ref byte* ip, ref byte* op, uint t, byte* ipEnd, byte* opEnd)
+        private static void NeedsIn(byte* inp, long count, byte* inpEnd)
         {
-            if (t == 0) return;
-            if (ip + t > ipEnd || op + t > opEnd) throw new InvalidDataException("LZO literal overrun");
-            byte* oe = op + t;
-            while (op < oe) *op++ = *ip++;
+            if (inp + count > inpEnd) throw new InvalidDataException("LZO input overrun");
+        }
+
+        private static void NeedsOut(byte* outp, long count, byte* outpEnd)
+        {
+            if (outp + count > outpEnd) throw new InvalidDataException("LZO output overrun");
+        }
+
+        /// <summary>Skips a run of zero bytes (each worth 255 in a length) and returns how many were skipped.</summary>
+        private static long CountZeros(ref byte* inp, byte* inpEnd)
+        {
+            byte* start = inp;
+            while (inp < inpEnd && *inp == 0) inp++;
+            return inp - start;
         }
     }
 
