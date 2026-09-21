@@ -59,6 +59,25 @@ namespace ProcreateViewer
             try { using (var k = Registry.CurrentUser.CreateSubKey(Key)) k.SetValue(name, value ? 1 : 0, RegistryValueKind.DWord); }
             catch { }
         }
+
+        public static string Get(string name, string def)
+        {
+            try
+            {
+                using (var k = Registry.CurrentUser.OpenSubKey(Key))
+                {
+                    object v = k == null ? null : k.GetValue(name);
+                    return v is string ? (string)v : def;
+                }
+            }
+            catch { return def; }
+        }
+
+        public static void Set(string name, string value)
+        {
+            try { using (var k = Registry.CurrentUser.CreateSubKey(Key)) k.SetValue(name, value, RegistryValueKind.String); }
+            catch { }
+        }
     }
 
     static class Program
@@ -114,7 +133,7 @@ namespace ProcreateViewer
             try
             {
                 MessageBox.Show((ex == null ? "unknown error" : ex.GetType().Name + ": " + ex.Message) + (log != null ? "\n\n" + log : ""),
-                    "Procreate Viewer - エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    L.T("Procreate Viewer - error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch { }
         }
@@ -152,6 +171,7 @@ namespace ProcreateViewer
                 else if (step == 2) form.ShowFirstLayerAlone();
                 else if (step == 3) form.ShowFullSize();
                 else if (step == 4) form.ToggleFirstLayer();
+                else if (step == 5) form.ToggleLanguage();
                 else form.Close();
             };
             Application.Run(form);
@@ -231,8 +251,13 @@ namespace ProcreateViewer
                         Register(false);
                         Console.WriteLine("unregistered");
                         return 0;
+                    case "--lang":
+                        if (args.Length < 2 || (args[1] != "ja" && args[1] != "en")) { Console.WriteLine("usage: --lang ja|en"); return 2; }
+                        L.Set(args[1]);
+                        Console.WriteLine("language = " + L.Current);
+                        return 0;
                     default:
-                        Console.WriteLine("ProcreateViewer [file.procreate]\n  --export <file> <outdir>   write composite.png and every layer as PNG (full resolution, group folders)\n  --psd <file> <out.psd>     write a layered Photoshop file (groups, blend modes, opacity, clipping)\n  --tree <file>              print the layer / group hierarchy\n  --bench <file> [out.png]   time the pipeline\n  --register | --unregister  file association for the current user");
+                        Console.WriteLine("ProcreateViewer [file.procreate]\n  --export <file> <outdir>   write composite.png and every layer as PNG (full resolution, group folders)\n  --psd <file> <out.psd>     write a layered Photoshop file (groups, blend modes, opacity, clipping)\n  --tree <file>              print the layer / group hierarchy\n  --bench <file> [out.png]   time the pipeline\n  --register | --unregister  file association for the current user\n  --lang ja|en               UI language (default: follows the Windows display language)");
                         return 2;
                 }
             }
@@ -270,9 +295,9 @@ namespace ProcreateViewer
                     {
                         pid.SetValue("", "Procreate Document");
                         using (var k = pid.CreateSubKey("DefaultIcon")) k.SetValue("", "\"" + exe + "\",0");
-                        using (var k = pid.CreateSubKey(@"shell\open")) k.SetValue("MUIVerb", "Procreate Viewer で開く");
+                        using (var k = pid.CreateSubKey(@"shell\open")) k.SetValue("MUIVerb", L.T("Open with Procreate Viewer"));
                         using (var k = pid.CreateSubKey(@"shell\open\command")) k.SetValue("", "\"" + exe + "\" \"%1\"");
-                        using (var k = pid.CreateSubKey(@"shell\exportpng")) k.SetValue("MUIVerb", "レイヤーを PNG で書き出し");
+                        using (var k = pid.CreateSubKey(@"shell\exportpng")) k.SetValue("MUIVerb", L.T("Export layers as PNG"));
                         using (var k = pid.CreateSubKey(@"shell\exportpng\command")) k.SetValue("", "\"" + exe + "\" --export \"%1\" \"%1_layers\"");
                     }
                 }

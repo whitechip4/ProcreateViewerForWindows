@@ -38,7 +38,7 @@ namespace ProcreateViewer
         {
             var doc = r.Doc;
             int W = doc.DisplayWidth, H = doc.DisplayHeight;
-            if (W > 30000 || H > 30000) throw new InvalidOperationException("PSD は 30000px までです（PSB が必要）");
+            if (W > 30000 || H > 30000) throw new InvalidOperationException(L.T("PSD is limited to 30000 px (PSB would be required)"));
 
             // Photoshop stores layers bottom-up; a group is "</Layer group>" divider ... children ... folder record
             var entries = new List<Entry>();

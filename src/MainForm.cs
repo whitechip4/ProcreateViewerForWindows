@@ -290,7 +290,7 @@ namespace ProcreateViewer
     public sealed class MainForm : Form
     {
         private readonly ToolStrip tool = new ToolStrip();
-        private readonly ToolStripButton btnComposite, btnSingle, btnFull;
+        private readonly ToolStripButton btnComposite, btnSingle, btnFull, btnLang;
         private bool zoomToActualAfterRender;
         private readonly SplitContainer split = new SplitContainer();
         private readonly LayerTree tree = new LayerTree();
@@ -370,22 +370,22 @@ namespace ProcreateViewer
             tool.Padding = new Padding(6, 3, 6, 3);
             status.SizingGrip = false;
             tool.GripStyle = ToolStripGripStyle.Hidden;
-            tool.Items.Add(new ToolStripButton("開く…", null, (s, e) => OpenDialog()));
+            tool.Items.Add(Btn("Open\u2026", (s, e) => OpenDialog()));
             tool.Items.Add(new ToolStripSeparator());
-            btnComposite = new ToolStripButton("合成表示") { CheckOnClick = false, Checked = true };
-            btnSingle = new ToolStripButton("選択レイヤーのみ") { CheckOnClick = false };
+            btnComposite = Btn("Composite", null); btnComposite.Checked = true;
+            btnSingle = Btn("Selected layer only", null);
             btnComposite.Click += (s, e) => { btnComposite.Checked = true; btnSingle.Checked = false; RequestRender(); };
             btnSingle.Click += (s, e) => { btnSingle.Checked = true; btnComposite.Checked = false; RequestRender(); };
             tool.Items.Add(btnComposite);
             tool.Items.Add(btnSingle);
             tool.Items.Add(new ToolStripSeparator());
-            tool.Items.Add(new ToolStripButton("全て表示", null, (s, e) => SetAll(true)));
-            tool.Items.Add(new ToolStripButton("全て非表示", null, (s, e) => SetAll(false)));
-            tool.Items.Add(new ToolStripButton("保存時の状態", null, (s, e) => ResetVisibility()));
+            tool.Items.Add(Btn("Show all", (s, e) => SetAll(true)));
+            tool.Items.Add(Btn("Hide all", (s, e) => SetAll(false)));
+            tool.Items.Add(Btn("As saved", (s, e) => ResetVisibility()));
             tool.Items.Add(new ToolStripSeparator());
-            tool.Items.Add(new ToolStripButton("フィット", null, (s, e) => view.Fit()));
+            tool.Items.Add(Btn("Fit", (s, e) => view.Fit()));
             tool.Items.Add(new ToolStripButton("100%", null, (s, e) => ZoomActual()));
-            btnFull = new ToolStripButton("フルサイズ") { CheckOnClick = true, Checked = Prefs.Get("FullSize", true), ToolTipText = "原寸で合成して表示する（オフにすると長辺 2048px のプレビューで軽く表示）" };
+            btnFull = Btn("Full size", null); btnFull.CheckOnClick = true; btnFull.Checked = Prefs.Get("FullSize", true);
             btnFull.Click += (s, e) =>
             {
                 Prefs.Set("FullSize", btnFull.Checked);
@@ -394,14 +394,18 @@ namespace ProcreateViewer
             };
             tool.Items.Add(btnFull);
             tool.Items.Add(new ToolStripSeparator());
-            tool.Items.Add(new ToolStripButton("表示をPNG保存…", null, (s, e) => SaveView()));
-            tool.Items.Add(new ToolStripButton("全レイヤーをPNG書き出し…", null, (s, e) => ExportAll()));
-            tool.Items.Add(new ToolStripButton("PSD書き出し…", null, (s, e) => ExportPsd()));
+            tool.Items.Add(Btn("Save view as PNG\u2026", (s, e) => SaveView()));
+            tool.Items.Add(Btn("Export all layers as PNG\u2026", (s, e) => ExportAll()));
+            tool.Items.Add(Btn("Export PSD\u2026", (s, e) => ExportPsd()));
+
+            // language switch, right-aligned: shows the *other* language so it reads as "switch to ..."
+            btnLang = new ToolStripButton { Alignment = ToolStripItemAlignment.Right, CheckOnClick = false };
+            btnLang.Click += (s, e) => { L.Set(L.IsJapanese ? "en" : "ja"); ApplyLanguage(); };
+            tool.Items.Add(btnLang);
 
             statusLabel.Spring = true;
             statusLabel.ForeColor = Theme.TextDim;
             statusLabel.TextAlign = ContentAlignment.MiddleLeft;
-            statusLabel.Text = "ファイルを開くか、ここに .procreate をドロップしてください";
             progress.Visible = false;
             status.Items.Add(statusLabel);
             status.Items.Add(progress);
@@ -410,6 +414,7 @@ namespace ProcreateViewer
             Controls.Add(tool);
             Controls.Add(status);
             split.SplitterDistance = 360;
+            ApplyLanguage();
 
             view.ZoomChanged += UpdateStatus;
             DragEnter += (s, e) => { if (e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effect = DragDropEffects.Copy; };
@@ -428,6 +433,32 @@ namespace ProcreateViewer
             SizeChanged += (s, e) => Trace.Log("form size=" + Size + " state=" + WindowState);
             Application.ApplicationExit += (s, e) => Trace.Log("application exit");
             AppDomain.CurrentDomain.ProcessExit += (s, e) => Trace.Log("process exit");
+        }
+
+        /// <summary>Toolbar button whose Tag holds the English caption key, so ApplyLanguage() can retitle it.</summary>
+        private static ToolStripButton Btn(string key, EventHandler onClick)
+        {
+            var b = new ToolStripButton(L.T(key), null, onClick) { Tag = key, CheckOnClick = false };
+            return b;
+        }
+
+        /// <summary>Re-apply every visible string in the current language (called at start and on the language switch).</summary>
+        private void ApplyLanguage()
+        {
+            foreach (ToolStripItem it in tool.Items)
+            {
+                var key = it.Tag as string;
+                if (key != null) it.Text = L.T(key);
+            }
+            btnFull.ToolTipText = L.T("Composite at full resolution (off: a lighter preview with the long side at 2048 px)");
+            btnLang.Text = L.IsJapanese ? "English" : "日本語";
+            btnLang.ToolTipText = L.T("Language");
+            if (doc == null) statusLabel.Text = L.T("Open a file or drop a .procreate here");
+            else
+            {
+                foreach (var kv in nodes) kv.Value.Text = NodeText(kv.Key);
+                if (loaded) UpdateStatus();
+            }
         }
 
         /// <summary>Eye icon on a rounded dark tile: open and bright when visible, closed and dim when hidden.</summary>
@@ -535,7 +566,7 @@ namespace ProcreateViewer
             loaded = false;
             var sw = Stopwatch.StartNew();
             Text = Path.GetFileName(path) + " - Procreate Viewer";
-            statusLabel.Text = "開いています… " + path;
+            statusLabel.Text = L.F("Opening\u2026 {0}", path);
             try { Trace.Log("open " + path + " attrs=" + File.GetAttributes(path)); } catch (Exception ex) { Trace.Log("open " + path + " (attrs failed: " + ex.Message + ")"); }
             // parse off the UI thread: reading a cloud placeholder can block for a long time
             Task.Run(() =>
@@ -553,8 +584,8 @@ namespace ProcreateViewer
                     UI(() =>
                     {
                         if (seq != loadSeq) return;
-                        statusLabel.Text = "開けません: " + ex.Message;
-                        MessageBox.Show(this, path + "\n\n" + ex.Message, "開けません", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        statusLabel.Text = L.F("Cannot open: {0}", ex.Message);
+                        MessageBox.Show(this, path + "\n\n" + ex.Message, L.T("Cannot open"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     });
                     return;
                 }
@@ -581,7 +612,7 @@ namespace ProcreateViewer
                     progress.Visible = true;
                     progress.Maximum = Math.Max(1, doc.LayerCount());
                     progress.Value = 0;
-                    statusLabel.Text = "レイヤー展開中…";
+                    statusLabel.Text = L.T("Decoding layers\u2026");
                     if (old != null) old.Dispose();
                     LoadLayers(seq, sw);
                 });
@@ -600,7 +631,7 @@ namespace ProcreateViewer
                     {
                         if (seq != loadSeq) return;
                         progress.Value = Math.Min(progress.Maximum, n);
-                        statusLabel.Text = string.Format("レイヤー展開中 {0}/{1}", n, total);
+                        statusLabel.Text = L.F("Decoding layers {0}/{1}", n, total);
                     }), full);
                     long ms = sw.ElapsedMilliseconds;
                     Trace.Log("layers decoded in " + ms + " ms" + (full ? " (full cache " + (r.FullCacheBytes >> 20) + " MB, overflow=" + r.FullCacheOverflow + ")" : ""));
@@ -640,7 +671,7 @@ namespace ProcreateViewer
                 catch (Exception ex)
                 {
                     Trace.Log("load failed: " + ex);
-                    UI(() => { statusLabel.Text = "読み込みエラー: " + ex.Message; progress.Visible = false; });
+                    UI(() => { statusLabel.Text = L.F("Load error: {0}", ex.Message); progress.Visible = false; });
                 }
             });
         }
@@ -677,7 +708,7 @@ namespace ProcreateViewer
         private static string NodeText(Layer l)
         {
             int pct = (int)Math.Round(l.Opacity * 100);
-            return l.IsGroup ? string.Format("{0}   [グループ {1}%]", l.Name, pct)
+            return l.IsGroup ? L.F("{0}   [Group {1}%]", l.Name, pct)
                              : string.Format("{0}   [{1} {2}%]", l.Name, l.BlendName, pct);
         }
 
@@ -722,16 +753,19 @@ namespace ProcreateViewer
         private void UpdateStatus()
         {
             if (doc == null) return;
-            string mode = btnFull.Checked ? string.Format("フルサイズ (キャッシュ {0} MB)", renderer.FullCacheBytes >> 20) : string.Format("プレビュー {0}%", (int)Math.Round(renderer.Scale * 100));
+            string mode = btnFull.Checked ? L.F("Full size (cache {0} MB)", renderer.FullCacheBytes >> 20) : L.F("Preview {0}%", (int)Math.Round(renderer.Scale * 100));
             string zoomText = "";
             if (view.Image != null && doc.DisplayWidth > 0)
-                zoomText = string.Format("   表示 {0:0.#}%", view.Zoom * view.Image.Width / doc.DisplayWidth * 100);
-            statusLabel.Text = string.Format("{0}   {1}x{2} px   {3} dpi   レイヤー {4}   向き {5}{6}{7}   {8}{9}   読込 {10} ms / 描画 {11} ms",
+                zoomText = L.F("   view {0:0.#}%", view.Zoom * view.Image.Width / doc.DisplayWidth * 100);
+            statusLabel.Text = L.F("{0}   {1}x{2} px   {3} dpi   {4} layers   orientation {5}{6}{7}   {8}{9}   load {10} ms / render {11} ms",
                 Path.GetFileName(doc.Path), doc.DisplayWidth, doc.DisplayHeight, doc.Dpi > 0 ? doc.Dpi.ToString("0") : "?", doc.LayerCount(),
-                doc.Orientation, doc.FlipH ? " 左右反転" : "", doc.FlipV ? " 上下反転" : "", mode, zoomText, loadMs, lastRenderMs);
+                doc.Orientation, doc.FlipH ? L.T(" flip H") : "", doc.FlipV ? L.T(" flip V") : "", mode, zoomText, loadMs, lastRenderMs);
         }
 
         // ---------------- visibility -----------------
+        /// <summary>Test hook: what the language button does, followed by a (cached) re-render so --gui-test gets a screenshot.</summary>
+        public void ToggleLanguage() { L.Set(L.IsJapanese ? "en" : "ja"); ApplyLanguage(); RequestRender(); }
+
         /// <summary>Test hook: toggle the first visible layer off (what a click on its checkbox does).</summary>
         public void ToggleFirstLayer()
         {
@@ -787,7 +821,7 @@ namespace ProcreateViewer
             var r = renderer;
             int seq = loadSeq;
             Cursor = Cursors.AppStarting;
-            if (!preview) statusLabel.Text = "フルサイズで合成中…";
+            if (!preview) statusLabel.Text = L.T("Compositing at full size\u2026");
             Task.Run(() =>
             {
                 Bitmap bmp = null;
@@ -816,7 +850,7 @@ namespace ProcreateViewer
                         UpdateStatus();
                     }
                     else if (bmp != null) bmp.Dispose();
-                    if (err != null) statusLabel.Text = "描画エラー: " + err;
+                    if (err != null) statusLabel.Text = L.F("Render error: {0}", err);
                     if (pending) StartRender();
                     else if (AfterRender != null) AfterRender();
                 });
@@ -831,7 +865,7 @@ namespace ProcreateViewer
             {
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 using (var bmp = Compositor.ToBitmap(lastCanvas, doc, true, true)) bmp.Save(d.FileName, ImageFormat.Png);
-                statusLabel.Text = "保存しました: " + d.FileName;
+                statusLabel.Text = L.F("Saved: {0}", d.FileName);
             }
         }
 
@@ -841,8 +875,8 @@ namespace ProcreateViewer
             // a save dialog pre-filled with "<document>_layers": the chosen name becomes the output folder
             using (var d = new SaveFileDialog
             {
-                Title = "書き出し先フォルダ（この名前のフォルダに composite.png と各レイヤーの PNG を作ります）",
-                Filter = "フォルダ|*.",
+                Title = L.T("Output folder (composite.png and one PNG per layer are written into a folder with this name)"),
+                Filter = L.T("Folder") + "|*.",
                 InitialDirectory = Path.GetDirectoryName(doc.Path),
                 FileName = Path.GetFileNameWithoutExtension(doc.Path) + "_layers",
                 CheckFileExists = false,
@@ -860,10 +894,10 @@ namespace ProcreateViewer
                 {
                     try
                     {
-                        int n = r.ExportAll(dir, (done, total) => UI(() => { progress.Maximum = total; progress.Value = Math.Min(total, done); statusLabel.Text = string.Format("書き出し中 {0}/{1}", done, total); }));
-                        UI(() => { progress.Visible = false; statusLabel.Text = string.Format("{0} 枚を書き出しました: {1}", n, dir); });
+                        int n = r.ExportAll(dir, (done, total) => UI(() => { progress.Maximum = total; progress.Value = Math.Min(total, done); statusLabel.Text = L.F("Exporting {0}/{1}", done, total); }));
+                        UI(() => { progress.Visible = false; statusLabel.Text = L.F("Exported {0} files: {1}", n, dir); });
                     }
-                    catch (Exception ex) { UI(() => { progress.Visible = false; statusLabel.Text = "書き出しエラー: " + ex.Message; }); }
+                    catch (Exception ex) { UI(() => { progress.Visible = false; statusLabel.Text = L.F("Export error: {0}", ex.Message); }); }
                 });
             }
         }
@@ -883,11 +917,11 @@ namespace ProcreateViewer
                     try
                     {
                         var sw = Stopwatch.StartNew();
-                        PsdWriter.Write(r, file, (done, total) => UI(() => { progress.Maximum = total; progress.Value = Math.Min(total, done); statusLabel.Text = string.Format("PSD 書き出し中 {0}/{1}", done, total); }));
+                        PsdWriter.Write(r, file, (done, total) => UI(() => { progress.Maximum = total; progress.Value = Math.Min(total, done); statusLabel.Text = L.F("Exporting PSD {0}/{1}", done, total); }));
                         long size = new FileInfo(file).Length;
-                        UI(() => { progress.Visible = false; statusLabel.Text = string.Format("PSD を書き出しました: {0} ({1} MB, {2:0.0} 秒)", file, size >> 20, sw.ElapsedMilliseconds / 1000.0); });
+                        UI(() => { progress.Visible = false; statusLabel.Text = L.F("PSD written: {0} ({1} MB, {2:0.0} s)", file, size >> 20, sw.ElapsedMilliseconds / 1000.0); });
                     }
-                    catch (Exception ex) { Trace.Log("psd failed: " + ex); UI(() => { progress.Visible = false; statusLabel.Text = "PSD 書き出しエラー: " + ex.Message; }); }
+                    catch (Exception ex) { Trace.Log("psd failed: " + ex); UI(() => { progress.Visible = false; statusLabel.Text = L.F("PSD export error: {0}", ex.Message); }); }
                 });
             }
         }

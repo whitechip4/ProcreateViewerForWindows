@@ -1,4 +1,4 @@
-﻿; Inno Setup script for ProcreateViewer.
+; Inno Setup script for ProcreateViewer.
 ; Build:  ISCC.exe /DAppVersion=1.0.0 installer\ProcreateViewer.iss   (after build.cmd and thumb\compile.cmd)
 ; Installs the viewer + the Explorer thumbnail handler, associates .procreate, and undoes all of it on uninstall.
 
@@ -36,9 +36,25 @@ LicenseFile=..\LICENSE
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[CustomMessages]
+japanese.TaskAssoc=.procreate ファイルをこのビューアで開く
+english.TaskAssoc=Open .procreate files with this viewer
+japanese.TaskThumbs=エクスプローラにサムネイルを表示する
+english.TaskThumbs=Show thumbnails in Explorer
+japanese.TaskGroup=関連付け:
+english.TaskGroup=Associations:
+japanese.VerbOpen=Procreate Viewer で開く
+english.VerbOpen=Open with Procreate Viewer
+japanese.VerbExport=レイヤーを PNG で書き出し
+english.VerbExport=Export layers as PNG
+japanese.RegThumb=サムネイルハンドラを登録しています...
+english.RegThumb=Registering the thumbnail handler...
+japanese.Launch={#AppName} を起動
+english.Launch=Launch {#AppName}
+
 [Tasks]
-Name: "assoc"; Description: ".procreate ファイルをこのビューアで開く / Open .procreate files with this viewer"; GroupDescription: "関連付け / Associations:"
-Name: "thumbs"; Description: "エクスプローラにサムネイルを表示する / Show thumbnails in Explorer"; GroupDescription: "関連付け / Associations:"
+Name: "assoc"; Description: "{cm:TaskAssoc}"; GroupDescription: "{cm:TaskGroup}"
+Name: "thumbs"; Description: "{cm:TaskThumbs}"; GroupDescription: "{cm:TaskGroup}"
 
 [Files]
 Source: "..\bin\ProcreateViewer.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -56,9 +72,9 @@ Root: HKLM; Subkey: "Software\Classes\.procreate"; ValueType: string; ValueName:
 Root: HKLM; Subkey: "Software\Classes\.procreate"; ValueType: string; ValueName: "PerceivedType"; ValueData: "image"; Flags: uninsdeletevalue; Tasks: assoc
 Root: HKLM; Subkey: "Software\Classes\Procreate.Document"; ValueType: string; ValueName: ""; ValueData: "Procreate Document"; Flags: uninsdeletekey; Tasks: assoc
 Root: HKLM; Subkey: "Software\Classes\Procreate.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\ProcreateViewer.exe"",0"; Tasks: assoc
-Root: HKLM; Subkey: "Software\Classes\Procreate.Document\shell\open"; ValueType: string; ValueName: "MUIVerb"; ValueData: "Procreate Viewer で開く"; Tasks: assoc
+Root: HKLM; Subkey: "Software\Classes\Procreate.Document\shell\open"; ValueType: string; ValueName: "MUIVerb"; ValueData: "{cm:VerbOpen}"; Tasks: assoc
 Root: HKLM; Subkey: "Software\Classes\Procreate.Document\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\ProcreateViewer.exe"" ""%1"""; Tasks: assoc
-Root: HKLM; Subkey: "Software\Classes\Procreate.Document\shell\exportpng"; ValueType: string; ValueName: "MUIVerb"; ValueData: "レイヤーを PNG で書き出し"; Tasks: assoc
+Root: HKLM; Subkey: "Software\Classes\Procreate.Document\shell\exportpng"; ValueType: string; ValueName: "MUIVerb"; ValueData: "{cm:VerbExport}"; Tasks: assoc
 Root: HKLM; Subkey: "Software\Classes\Procreate.Document\shell\exportpng\command"; ValueType: string; ValueName: ""; ValueData: """{app}\ProcreateViewer.exe"" --export ""%1"" ""%1_layers"""; Tasks: assoc
 ; Explorer thumbnail handler (the COM class itself is registered by RegAsm in [Run])
 Root: HKLM; Subkey: "Software\Classes\.procreate\shellex\{#ThumbHandlerKey}"; ValueType: string; ValueName: ""; ValueData: "{#ThumbClsid}"; Flags: uninsdeletekey; Tasks: thumbs
@@ -66,8 +82,8 @@ Root: HKLM; Subkey: "Software\Classes\Procreate.Document\shellex\{#ThumbHandlerK
 Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved"; ValueType: string; ValueName: "{#ThumbClsid}"; ValueData: "Procreate Thumbnail Provider"; Flags: uninsdeletevalue; Tasks: thumbs
 
 [Run]
-Filename: "{dotnet4064}\RegAsm.exe"; Parameters: "/codebase ""{app}\ProcreateThumb.dll"""; Flags: runhidden; StatusMsg: "サムネイルハンドラを登録しています..."; Tasks: thumbs
-Filename: "{app}\ProcreateViewer.exe"; Description: "{#AppName} を起動 / Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{dotnet4064}\RegAsm.exe"; Parameters: "/codebase ""{app}\ProcreateThumb.dll"""; Flags: runhidden; StatusMsg: "{cm:RegThumb}"; Tasks: thumbs
+Filename: "{app}\ProcreateViewer.exe"; Description: "{cm:Launch}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{dotnet4064}\RegAsm.exe"; Parameters: "/unregister ""{app}\ProcreateThumb.dll"""; Flags: runhidden; RunOnceId: "UnregThumb"

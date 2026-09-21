@@ -143,7 +143,7 @@ namespace ProcreateViewer
             if (cn == "SilicaGroup")
             {
                 layer.IsGroup = true;
-                layer.Name = ns.StrKey(d, "name") ?? "グループ";
+                layer.Name = ns.StrKey(d, "name") ?? L.T("Group");
                 layer.Hidden = NsArchive.Bool(d, "isHidden", false);
                 layer.Opacity = (float)NsArchive.Num(d, "opacity", 1);
                 layer.Clipped = NsArchive.Bool(d, "isClipped", false);
@@ -157,7 +157,7 @@ namespace ProcreateViewer
                 return layer;
             }
             if (cn != "SilicaLayer" && !d.ContainsKey("UUID")) return null;
-            layer.Name = ns.StrKey(d, "name") ?? "レイヤー";
+            layer.Name = ns.StrKey(d, "name") ?? L.T("Layer");
             layer.Uuid = ns.StrKey(d, "UUID");
             layer.Hidden = NsArchive.Bool(d, "hidden", false);
             layer.Opacity = (float)NsArchive.Num(d, "opacity", 1);
